@@ -41,6 +41,7 @@ int main() {
     int vmax = 255;
     int compressionVal = 30;
     int showFilteredBox = 0;
+    int drawContoursBox = 0;
     int frameNumb = 0;
     //std::cout << cv::getBuildInformation() << std::endl;
     if (!cap.isOpened()) {
@@ -52,7 +53,7 @@ int main() {
         //std::cout <<"Working" << std::endl;
         cv::Mat srcImg = mat.clone();
 
-        cv::resize(srcImg,srcImg,cv::Size(160,90),0,0,cv::INTER_NEAREST);
+
         std::vector<int> compression_params;
         compression_params.push_back(cv::IMWRITE_JPEG_QUALITY);
         compression_params.push_back(compressionVal);
@@ -113,6 +114,10 @@ int main() {
                 showFilteredBox = val;
                 // std::cout << "v" << std::endl;
             }
+            else if(lineNumb == 8){
+                drawContoursBox = val;
+                // std::cout << "v" << std::endl;
+            }
             //std::cout << line << std::endl;
             lineNumb+= 1;
 
@@ -127,11 +132,19 @@ int main() {
         cv::inRange(mat,cv::Scalar(hmin,smin,vmin), cv::Scalar(hmax,smax,vmax), mat);
 
 
-        if(showFilteredBox == 1){
-            drawIntoArea(mat,srcImg,0,0,160/2,90/2);
+
+        std::vector<std::vector<cv::Point>> ctr;
+        std::vector<cv::Vec4i> h;
+        cv::findContours(mat,ctr,h,CV_RETR_TREE,CV_CHAIN_APPROX_SIMPLE, cv::Point(0,0));
+        if(drawContoursBox == 1){
+            for(int i = 0; i < ctr.size(); i++){
+                cv::drawContours(srcImg,ctr,i,cv::Scalar(0,0,255),2,8,h,0,cv::Point());
+            }
         }
-
-
+        if(showFilteredBox == 1){
+            drawIntoArea(mat,srcImg,0,0,640/3,360/3);
+        }
+        cv::resize(srcImg,srcImg,cv::Size(160,90),0,0,cv::INTER_NEAREST);
         cv::imwrite("/var/www/html/imageTest.jpg", srcImg, compression_params);
         std::rename("/var/www/html/imageTest.jpg","/var/www/html/ImageUpdated/imageTest.jpg");
         cv::waitKey(1000/fps);
