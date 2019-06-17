@@ -8,5 +8,5 @@ include_directories(${OpenCV_INCLUDE_DIRS})
 
 find_package(Threads)
 
-add_executable(vision main.cpp)
+add_executable(vision main.cpp vision/settings/VisionProperties.cpp vision/settings/VisionProperties.hpp vision/pipeline/GripPipeline.cpp vision/pipeline/GripPipeline.hpp vision/math/PositionMath.cpp vision/math/PositionMath.hpp)
 target_link_libraries(vision ${OpenCV_LIBS} ${CMAKE_THREAD_LIBS_INIT})

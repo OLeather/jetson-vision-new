@@ -1,5 +1,11 @@
 #include <opencv2/opencv.hpp>
 #include <fstream>
+#include <chrono>
+#include "vision/settings/VisionProperties.hpp"
+#include "vision/pipeline/GripPipeline.hpp"
+#include "vision/math/PositionMath.hpp"
+
+
 void drawIntoArea(cv::Mat &src, cv::Mat &dst, int x, int y, int width, int height)
 {
     cv::Mat scaledSrc;
@@ -17,138 +23,186 @@ void drawIntoArea(cv::Mat &src, cv::Mat &dst, int x, int y, int width, int heigh
     }
 
 // Resize the converted source image to the desired target width.
-    resize(convertedSrc, scaledSrc,cv::Size(width,height),1,1,cv::INTER_AREA);
+    resize(convertedSrc, scaledSrc,cv::Size(width,height),1,1,cv::INTER_CUBIC);
 
 // create a region of interest in the destination image to copy the newly sized and converted source image into.
     cv::Mat ROI = dst(cv::Rect(x, y, scaledSrc.cols, scaledSrc.rows));
     scaledSrc.copyTo(ROI);
 }
 
+
+int resizeFactor = 2;
 int main() {
+
+    VisionProperties visionProperties = VisionProperties();
+    GripPipeline pipeline = GripPipeline();
+    PositionMath positionMath = PositionMath();
     int fps = 60;
-    //cv::VideoCapture cap = cv::VideoCapture("v4l2src device=/dev/video0 ! videoscale ! videorate ! video/x-raw, width=180, height=90, framerate=60/1 ! videoconvert ! appsink");
+
+    visionProperties.setStoredAngle(visionProperties.getCamWidth()/2);
+
     cv::VideoCapture cap = cv::VideoCapture(0);
-    cap.set(cv::CAP_PROP_FRAME_WIDTH, 640);
-    cap.set(cv::CAP_PROP_FRAME_HEIGHT, 360);
-   // cap.set(cv::CAP_PROP_EXPOSURE, -100);
-    //cap.set(cv::CAP_PROP_FPS, 57);
-    cv::Mat mat;
-    int hmin = 0;
-    int hmax = 180;
-    int smin = 0;
-    int smax = 255;
-    int vmin = 0;
-    int vmax = 255;
-    int compressionVal = 30;
-    int showFilteredBox = 0;
-    int drawContoursBox = 0;
-    int frameNumb = 0;
+    cap.set(cv::CAP_PROP_FRAME_WIDTH, visionProperties.getCamWidth());
+    cap.set(cv::CAP_PROP_FRAME_HEIGHT,  visionProperties.getCamHeight());
+    cap.set(cv::CAP_PROP_AUTO_EXPOSURE, .75);
+   // cap.set(cv::CAP_PROP_EXPOSURE, 0.1);
+    cap.set(cv::CAP_PROP_AUTOFOCUS, 1);
+    //cap.set(cv::CAP_PROP_FPS, 60);
+
     //std::cout << cv::getBuildInformation() << std::endl;
     if (!cap.isOpened()) {
         std::cout << "ERROR! Unable to open camera\n";
         return -1;
     }
-    while (cap.read(mat)) {
-       // cv::resize(mat,mat,cv::Size(360,180),0,0,cv::INTER_CUBIC);
-        //std::cout <<"Working" << std::endl;
-        cv::Mat srcImg = mat.clone();
+    //Compression Params
+    std::vector<int> compression_params;
+    cv::Mat mat;
+    bool trueBool = true;
+    //int i = 0;
+    //double avgTime = 0;
+    while (cap.read(mat) ) {
 
+        if( visionProperties.getResizeValue() == 1){
+            resizeFactor = 2;
+        }
+        else{
+            resizeFactor = 4;
+        }
+        int resizedWidth = visionProperties.getCamWidth()/resizeFactor;
+        int resizedHeight =  visionProperties.getCamHeight()/resizeFactor;
+        auto started = std::chrono::high_resolution_clock::now();
+      // mat = cv::imread("../image4.jpeg");
 
-        std::vector<int> compression_params;
+        //Read Vision Propreties from text file
+        visionProperties.readVisionProperties();
+
+        compression_params.clear();
         compression_params.push_back(cv::IMWRITE_JPEG_QUALITY);
-        compression_params.push_back(compressionVal);
+        compression_params.push_back(visionProperties.getCompression());
+        compression_params.push_back(cv::IMWRITE_JPEG_PROGRESSIVE);
+        compression_params.push_back(1);
         compression_params.push_back(cv::IMWRITE_JPEG_OPTIMIZE);
         compression_params.push_back(1);
-        compression_params.push_back(cv::IMREAD_REDUCED_COLOR_8);
-        compression_params.push_back(1);
-        //cv::imwrite("/var/www/html/imageTestSrc.jpg", srcImg, compression_params);
-        //std::rename("/var/www/html/imageTestSrc.jpg","/var/www/html/ImageUpdated/imageTestSrc.jpg");
 
-        std::ifstream input("/var/www/html/VisionProperties.txt");
-        int lineNumb = 0;
-        int val;
-        std::string line;
-
-        while( std::getline(input, line, '\r')){
-            std::stringstream ss;
-            ss << line;
-
-            std::string tmp;
-            int found;
-            while(!ss.eof()){
-                ss >> tmp;
-                if(std::stringstream(tmp) >> found){
-                    val = found;
-                }
-
-            }
-            if(lineNumb == 0){
-                hmin = val;
-               //std::cout << lineNumb << std::endl;
-            }
-            else if(lineNumb == 1){
-                hmax = val;
-                //std::cout << val << std::endl;
-            }
-            else if(lineNumb == 2){
-                smin = val;
-                //std::cout << "sm" << std::endl;
-            }
-            else if(lineNumb == 3){
-                smax = val;
-                //std::cout << "s" << std::endl;
-            }
-            else if(lineNumb == 4){
-                vmin = val;
-                //std::cout << "vm" << std::endl;
-            }
-            else if(lineNumb == 5){
-                vmax = val;
-               // std::cout << "v" << std::endl;
-            }
-            else if(lineNumb == 6){
-                compressionVal = val;
-                // std::cout << "v" << std::endl;
-            }
-            else if(lineNumb == 7){
-                showFilteredBox = val;
-                // std::cout << "v" << std::endl;
-            }
-            else if(lineNumb == 8){
-                drawContoursBox = val;
-                // std::cout << "v" << std::endl;
-            }
-            //std::cout << line << std::endl;
-            lineNumb+= 1;
-
-
-        }
-
-        //cv::imshow("Window", mat);
+        pipeline.Process(mat);
 
 
 
-        cv::cvtColor(mat,mat,cv::COLOR_BGR2HSV);
-        cv::inRange(mat,cv::Scalar(hmin,smin,vmin), cv::Scalar(hmax,smax,vmax), mat);
-
-
-
-        std::vector<std::vector<cv::Point>> ctr;
+        std::vector<std::vector<cv::Point>> ctrs;
+        ctrs = *pipeline.GetGroupedContoursOutput();
         std::vector<cv::Vec4i> h;
-        cv::findContours(mat,ctr,h,CV_RETR_TREE,CV_CHAIN_APPROX_SIMPLE, cv::Point(0,0));
-        if(drawContoursBox == 1){
-            for(int i = 0; i < ctr.size(); i++){
-                cv::drawContours(srcImg,ctr,i,cv::Scalar(0,0,255),2,8,h,0,cv::Point());
+
+        //***SHOW APPROX POLY
+        /*
+        int a = 0;
+        for(std::vector<cv::Point> contour: *pipeline.GetApproxPolyOutput()) {
+            cv::drawContours(mat,*pipeline.GetApproxPolyOutput(),a, cv::Scalar(0,0,255),4);
+            a++;
+        }
+        */
+
+        //***SHOW CORNER POINTS
+        /*
+        int b = 0;
+        for(std::vector<cv::Point> contour: *pipeline.GetMathPoints()){
+            b = 0;
+            for(cv::Point point: contour){
+               // std::cout << point << std::endl;
+               if(b == 0){
+                   cv::circle(mat,cv::Point(point.x/4, point.y/4),1,cv::Scalar(255,0,0), -1);
+               }
+                if(b == 1){
+                    cv::circle(mat,cv::Point(point.x/4, point.y/4),1,cv::Scalar(0,0,0), -1);
+                }
+                if(b == 2){
+                    cv::circle(mat,cv::Point(point.x/4, point.y/4),1,cv::Scalar(0,0,255), -1);
+                }
+                if(b == 3){
+                    cv::circle(mat,cv::Point(point.x/4, point.y/4),1,cv::Scalar(255,0,255), -1);
+                }
+                b++;
+            }
+
+        }*/
+
+        //Resize image to sending size
+        cv::resize(mat,mat,cv::Size(resizedWidth,resizedHeight),0,0,cv::INTER_NEAREST);
+
+
+        double resizeRatioWidth = (visionProperties.getCamWidth()/resizedWidth);
+        double resizeRatioHeight = (visionProperties.getCamHeight()/resizedHeight);
+        //Draw contours
+        if(visionProperties.getDrawContours() == 1){
+
+
+            for(int i = 0; i < ctrs.size(); i++){
+                //cv::drawContours(srcImg,ctrs,i,cv::Scalar(0,0,255),2,8,h,0,cv::Point());
+                cv::RotatedRect rect = cv::minAreaRect(ctrs[i]);
+
+                // We take the edges that OpenCV calculated for us
+                cv::Point2f vertices2f[4];
+                rect.points(vertices2f);
+
+                cv::line(mat,cv::Point(rect.center.x/resizeRatioWidth - 5, rect.center.y/resizeRatioHeight), cv::Point(rect.center.x/resizeRatioWidth + 5, rect.center.y/resizeRatioHeight),cv::Scalar(100,100,100), 0.5);
+                cv::line(mat,cv::Point(rect.center.x/resizeRatioWidth, rect.center.y/resizeRatioHeight-5), cv::Point(rect.center.x/resizeRatioWidth , rect.center.y/resizeRatioHeight + 5),cv::Scalar(100,100,100), 0.5);
+
+                for (int i = 0; i < 4; i++)
+                    cv::line(mat, cv::Point(vertices2f[i].x/resizeRatioWidth, vertices2f[i].y/resizeRatioHeight), cv::Point(vertices2f[(i+1)%4].x/resizeRatioWidth, vertices2f[(i+1)%4].y/resizeRatioHeight), cv::Scalar(50,50,50));
+
+                cv::rectangle(mat,cv::Point(rect.boundingRect().x/resizeRatioWidth, rect.boundingRect().y/resizeRatioHeight), cv::Point(rect.boundingRect().x/resizeRatioWidth + rect.boundingRect().width/resizeRatioWidth, rect.boundingRect().y/resizeRatioHeight + rect.boundingRect().height/resizeRatioHeight), cv::Scalar(0,255,0));
             }
         }
-        if(showFilteredBox == 1){
-            drawIntoArea(mat,srcImg,0,0,640/3,360/3);
+
+        //Draw crosshair
+        cv::line(mat,cv::Point(visionProperties.getCamWidth()/resizeRatioWidth/2 - 5,  visionProperties.getCamHeight()/resizeRatioHeight/2), cv::Point(visionProperties.getCamWidth()/resizeRatioWidth/2 + 5,  visionProperties.getCamHeight()/resizeRatioHeight/2),cv::Scalar(50,50,50));
+        cv::line(mat,cv::Point(visionProperties.getCamWidth()/resizeRatioWidth/2, visionProperties.getCamHeight()/resizeRatioHeight/2 - 5), cv::Point(visionProperties.getCamWidth()/resizeRatioWidth/2,  visionProperties.getCamHeight()/resizeRatioHeight/2 + 5),cv::Scalar(50,50,50));
+
+
+
+        if(visionProperties.getShowFiltered() == 1){
+            drawIntoArea(*pipeline.GetHsvThresholdOutput(),mat,0,0,visionProperties.getCamWidth()/resizeRatioWidth/3,visionProperties.getCamHeight()/resizeRatioHeight/3);
         }
-        cv::resize(srcImg,srcImg,cv::Size(160,90),0,0,cv::INTER_NEAREST);
-        cv::imwrite("/var/www/html/imageTest.jpg", srcImg, compression_params);
+
+
+
+        //Show 3D map
+        if(visionProperties.getShow3D() == 1) {
+
+            positionMath.Reset3DImage(50/(resizeFactor/2), 75/(resizeFactor/2));
+
+            for (std::vector<cv::Point> contour: *pipeline.GetMathPoints()) {
+
+                cv::Point leftPoint = cv::Point((contour.at(0).x + contour.at(1).x) / 2,
+                                                (contour.at(0).y + contour.at(1).y) / 2);
+                cv::Point rightPoint = cv::Point((contour.at(2).x + contour.at(3).x) / 2,
+                                                 (contour.at(2).y + contour.at(3).y) / 2);
+                double leftPointDistance = sqrt(
+                        (contour.at(1).x - contour.at(0).x) * (contour.at(1).x - contour.at(0).x) +
+                        (contour.at(1).y - contour.at(0).y) * (contour.at(1).y - contour.at(0).y));
+                double rightPointDistance = sqrt(
+                        (contour.at(3).x - contour.at(2).x) * (contour.at(3).x - contour.at(2).x) +
+                        (contour.at(3).y - contour.at(2).y) * (contour.at(3).y - contour.at(2).y));
+
+                positionMath.Process3DImage(leftPoint, rightPoint, leftPointDistance, 5, rightPointDistance, 5, visionProperties.getCamWidth(), 1);
+
+            }
+            cv::Mat img = positionMath.Get3DImage();
+            drawIntoArea(img,mat,mat.cols-(50/(resizeFactor/2)),0,50/(resizeFactor/2), 75/(resizeFactor/2));
+        }
+        auto done = std::chrono::high_resolution_clock::now();
+        // std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(done-started).count() << std::endl;
+
+        //Display latency value
+        cv::putText(mat, std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(done-started).count()) + "ms",cv::Point(2,10),cv::FONT_HERSHEY_PLAIN,0.7,cv::Scalar(0,255,0));
+
+        cv::imwrite("/var/www/html/imageTest.jpg", mat, compression_params);
         std::rename("/var/www/html/imageTest.jpg","/var/www/html/ImageUpdated/imageTest.jpg");
-        cv::waitKey(1000/fps);
+
+
+        // += (double)std::chrono::duration_cast<std::chrono::milliseconds>(done-started).count();
+       // i++;
     }
+    //std::cout <<"Avg Time: " << (avgTime/100) << std::endl;
 
     cv::destroyAllWindows();
     std::cout <<"Test"<< std::endl;
